@@ -3,9 +3,14 @@ from auth.users import fastapi_users, auth_backend
 from auth.schemas import UserRead, UserCreate, UserUpdate
 from models import User
 from auth.users import current_active_user
+from init_db import init_db
 from routes.links import router
 import asyncio
 from utils import start_stats_sync_loop
+from logger import get_logger
+
+
+logger = get_logger(__name__)
 
 app = FastAPI()
 
@@ -38,4 +43,7 @@ async def read_current_user(user: User = Depends(current_active_user)):
 
 @app.on_event("startup")
 async def startup():
+    await init_db()
+    logger.info("Database initialized")
     asyncio.create_task(start_stats_sync_loop())
+    logger.info("Stats sync loop started")

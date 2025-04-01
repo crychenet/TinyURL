@@ -1,12 +1,21 @@
 # Демонстрация работы api
-![Скриншот 01-04-2025 180116](https://github.com/user-attachments/assets/0ce24ad7-82b5-42d2-b248-08ba3fba3677)
-![Скриншот 01-04-2025 175417](https://github.com/user-attachments/assets/8dec9d53-9f7e-4882-b0cc-5c60dfcc83c3)
-![Скриншот 01-04-2025 175440](https://github.com/user-attachments/assets/4c77a909-0b00-45fe-87bb-9130cf2dc851)
-![Скриншот 01-04-2025 175740](https://github.com/user-attachments/assets/4c7148b6-eb52-493a-8b73-d77af0ac2f13)
-![Скриншот 01-04-2025 175815](https://github.com/user-attachments/assets/3b5c0479-c030-4953-82a5-8c62cda07aef)
-![Скриншот 01-04-2025 175923](https://github.com/user-attachments/assets/dc710a7a-47a4-4bdf-98ac-5fa0507471b9)  
-![Скриншот 01-04-2025 180014](https://github.com/user-attachments/assets/9eb30ddd-bf96-4e6f-8efb-ea946f650cbf)  
-![Скриншот 01-04-2025 180035](https://github.com/user-attachments/assets/f4ea25eb-6b7f-44f4-930d-6caff43d87d1)  
+## Хостинг на сервере
+![image](https://github.com/user-attachments/assets/a653a56a-329c-4da3-abc6-898b8fe0a076)
+
+## Swagger UI
+![image](https://github.com/user-attachments/assets/bc5f28a5-981d-437a-a842-bbe705908612)
+![image](https://github.com/user-attachments/assets/0beca6cd-8300-4b0b-8441-bb44e4c286cc)
+
+## Демонстрация работы из Docker
+![Скриншот 01-04-2025 180116](https://github.com/user-attachments/assets/f8772d21-6dd7-4237-9099-37ba34232890)  
+![Скриншот 01-04-2025 175417](https://github.com/user-attachments/assets/05fcbe92-186e-4d53-a671-f2ba0dcb49c6)  
+![Скриншот 01-04-2025 175440](https://github.com/user-attachments/assets/63765b19-07f8-4293-b968-aafc6a09c72b)  
+![Скриншот 01-04-2025 175740](https://github.com/user-attachments/assets/c72d27e9-8483-4dd3-a077-7c5befcc27e7)  
+![Скриншот 01-04-2025 175815](https://github.com/user-attachments/assets/21add5c7-e82a-4534-b389-b783a7f76153)  
+![Скриншот 01-04-2025 175923](https://github.com/user-attachments/assets/9c98d568-d2a7-427b-8e13-90b05ad341e3)  
+![Скриншот 01-04-2025 180014](https://github.com/user-attachments/assets/c374b18c-baae-4cef-a77b-432cb06a0e86)  
+![Скриншот 01-04-2025 180035](https://github.com/user-attachments/assets/61a2f504-cccd-4427-97c3-6d4f3c382004)  
+
 
 # Инструкция по запуску TinyURL (bash-версия)
 

@@ -9,6 +9,7 @@ from routes.schemas import LinkCreate, LinkResponse, LinkStats, LinkUpdate
 from db import get_async_session
 from auth.users import current_active_user
 from utils import _generate_short_code, process_csv_import
+from logger import get_logger
 from cache.link_cache import (
     get_link_from_cache,
     set_link_in_cache,
@@ -19,6 +20,7 @@ from cache.link_cache import (
 
 
 router = APIRouter(prefix="/links", tags=["links"])
+logger = get_logger(__name__)
 
 
 @router.post("/shorten", response_model=LinkResponse)
@@ -57,7 +59,12 @@ async def create_short_link(
     await session.refresh(new_link)
 
     await set_link_in_cache(new_link)
-
+    logger.info("Short link created", extra={
+        "user_id": str(user.id),
+        "short_code": new_link.short_code,
+        "original_url": new_link.original_url,
+        "expires_at": str(new_link.expires_at)
+    })
     return new_link
 
 
@@ -79,7 +86,6 @@ async def search_by_original_url(
         )
     )
     links = result.scalars().all()
-
     return links
 
 
@@ -93,8 +99,13 @@ async def import_links_from_csv(
         raise HTTPException(status_code=400, detail="Only CSV files are supported")
 
     content = await file.read()
-    return await process_csv_import(content, session, user)
-
+    try:
+        result = await process_csv_import(content, session, user)
+        logger.info(f"CSV import by user {user.id}: {len(result['created'])} created, {len(result['errors'])} errors")
+        return result
+    except ValueError as e:
+        logger.warning(f"CSV import failed for user {user.id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{short_code}")
@@ -128,6 +139,7 @@ async def redirect_to_original(
                 raise HTTPException(status_code=410, detail="Link expired")
 
     await increment_link_stats(short_code)
+    logger.info(f"Redirected short link {short_code}")
 
     return RedirectResponse(link_data["original_url"], status_code=307)
 
@@ -153,6 +165,7 @@ async def delete_link(
     await session.commit()
 
     await delete_link_from_cache(short_code)
+    logger.info(f"Link deleted: {short_code} by user {user.id}")
 
 
 @router.put("/{short_code}", response_model=LinkResponse)
@@ -178,6 +191,7 @@ async def update_link(
     await session.refresh(link)
 
     await set_link_in_cache(link)
+    logger.info(f"Link updated: {short_code} by user {user.id} → {link.original_url}")
 
     return link
 
@@ -207,4 +221,5 @@ async def get_link_stats_route(
         if "last_used" in stats:
             link.last_used = datetime.fromisoformat(stats["last_used"])
 
+    logger.info(f"Stats viewed for {short_code} by user {user.id}")
     return link

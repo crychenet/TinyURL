@@ -1,17 +1,21 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from fastapi.responses import RedirectResponse
-from init_redis import redis_client
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from datetime import datetime, timezone
-from json import dumps, loads
 
 from models import Link, User
 from routes.schemas import LinkCreate, LinkResponse, LinkStats, LinkUpdate
 from db import get_async_session
 from auth.users import current_active_user
-from utils import generate_short_code
-from config import LINK_TTL_SECONDS, STATS_TTL_SECONDS
+from utils import _generate_short_code, process_csv_import
+from cache.link_cache import (
+    get_link_from_cache,
+    set_link_in_cache,
+    delete_link_from_cache,
+    increment_link_stats,
+    get_link_stats,
+)
 
 
 router = APIRouter(prefix="/links", tags=["links"])
@@ -32,7 +36,7 @@ async def create_short_link(
         short_code = link_data.custom_alias
     else:
         while True:
-            code = generate_short_code()
+            code = _generate_short_code()
             exists = await session.execute(
                 select(Link).where(Link.short_code == code)
             )
@@ -52,14 +56,7 @@ async def create_short_link(
     await session.commit()
     await session.refresh(new_link)
 
-    await redis_client.setex(
-        f"link:{short_code}",
-        LINK_TTL_SECONDS,
-        dumps({
-            "original_url": new_link.original_url,
-            "expires_at": new_link.expires_at.isoformat() if new_link.expires_at else None
-        })
-    )
+    await set_link_in_cache(new_link)
 
     return new_link
 
@@ -68,7 +65,7 @@ async def create_short_link(
 async def search_by_original_url(
     original_url: str = Query(..., description="Original long URL"),
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user)
+    user: User = Depends(current_active_user),
 ):
     url_str = original_url.rstrip("/")
 
@@ -86,40 +83,51 @@ async def search_by_original_url(
     return links
 
 
+@router.post("/import_csv")
+async def import_links_from_csv(
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_async_session),
+    user: User = Depends(current_active_user),
+):
+    if file.content_type != "text/csv":
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+
+    content = await file.read()
+    return await process_csv_import(content, session, user)
+
+
+
 @router.get("/{short_code}")
 async def redirect_to_original(
     short_code: str,
     session: AsyncSession = Depends(get_async_session)
 ):
-    cache_key = f"link:{short_code}"
-    cached = await redis_client.get(cache_key)
+    link_data = await get_link_from_cache(short_code)
 
-    if cached:
-        link_data = loads(cached)
-    else:
+    if not link_data:
         result = await session.execute(
             select(Link).where(Link.short_code == short_code)
         )
         link = result.scalar_one_or_none()
-
         if not link:
             raise HTTPException(status_code=404, detail="Short link not found")
+
+        if link.expires_at and datetime.now(timezone.utc) > link.expires_at:
+            raise HTTPException(status_code=410, detail="Link expired")
 
         link_data = {
             "original_url": link.original_url,
             "expires_at": link.expires_at.isoformat() if link.expires_at else None
         }
-        await redis_client.setex(cache_key, LINK_TTL_SECONDS, dumps(link_data))
+        await set_link_in_cache(link)
 
-    if link_data["expires_at"]:
-        expires_at = datetime.fromisoformat(link_data["expires_at"]).replace(tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) > expires_at:
-            raise HTTPException(status_code=410, detail="Link expired")
+    else:
+        if link_data["expires_at"]:
+            expires_at = datetime.fromisoformat(link_data["expires_at"]).replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > expires_at:
+                raise HTTPException(status_code=410, detail="Link expired")
 
-    stats_key = f"stats:{short_code}"
-    await redis_client.hincrby(stats_key, "redirect_count", 1)
-    await redis_client.hset(stats_key, "last_used", datetime.now(timezone.utc).isoformat())
-    await redis_client.expire(stats_key, STATS_TTL_SECONDS)
+    await increment_link_stats(short_code)
 
     return RedirectResponse(link_data["original_url"], status_code=307)
 
@@ -144,8 +152,7 @@ async def delete_link(
     await session.delete(link)
     await session.commit()
 
-    await redis_client.delete(f"link:{short_code}")
-    await redis_client.delete(f"stats:{short_code}")
+    await delete_link_from_cache(short_code)
 
 
 @router.put("/{short_code}", response_model=LinkResponse)
@@ -170,23 +177,16 @@ async def update_link(
     await session.commit()
     await session.refresh(link)
 
-    await redis_client.setex(
-        f"link:{short_code}",
-        LINK_TTL_SECONDS,
-        dumps({
-            "original_url": link.original_url,
-            "expires_at": link.expires_at.isoformat() if link.expires_at else None
-        })
-    )
+    await set_link_in_cache(link)
 
     return link
 
 
 @router.get("/{short_code}/stats", response_model=LinkStats)
-async def get_link_stats(
+async def get_link_stats_route(
     short_code: str,
     session: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_active_user)
+    user: User = Depends(current_active_user),
 ):
     result = await session.execute(
         select(Link).where(Link.short_code == short_code)
@@ -199,8 +199,7 @@ async def get_link_stats(
     if link.user_id != str(user.id):
         raise HTTPException(status_code=403, detail="Not your link")
 
-    stats_key = f"stats:{short_code}"
-    stats = await redis_client.hgetall(stats_key)
+    stats = await get_link_stats(short_code)
 
     if stats:
         if "redirect_count" in stats:
